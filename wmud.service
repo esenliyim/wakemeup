@@ -1,0 +1,8 @@
+[Unit]
+Description=Wakemeup timer daemon
+
+[Service]
+ExecStart=/usr/bin/python3 /home/to/script
+
+[Install]
+WantedBy=multi-user.target
