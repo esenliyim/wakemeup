@@ -1,0 +1,11 @@
+server-side:
+
+    - names for timers so the user can pick one
+    - delete timer
+    - pause timer?
+    - figure out how to alarm (cron?)
+
+client-side:
+
+    - format -s output
+    - bit of code cleanup

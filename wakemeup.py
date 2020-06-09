@@ -1,4 +1,4 @@
-import getopt, sys, argparse, time, re, dbus, string
+import getopt, sys, argparse, time, re, dbus, string, datetime
 
 OPATH = "/com/esenliyim/WakeMeUp"
 IFACE = "com.esenliyim.WakeMeUp"
@@ -38,11 +38,11 @@ def main():
             print(parser.format_help())
             return
 
-        print("setting for:", str(seconds), "seconds")
         message = args.message
-        if message:
-            print("msg:", message)
-        #setTimer(timer, args.message)
+        if not message:
+            message = ""
+        print("started for", datetime.timedelta(seconds=seconds))
+        setTimer(seconds, message)
         
     elif args.alarm:
         if timer == None:
@@ -54,7 +54,9 @@ def main():
     elif args.show:
         bus = dbus.SessionBus()
         daemon = bus.get_object(BUS_NAME, '/Timer')
-        print(daemon.getTimers())
+        timers = dbus.Array(daemon.getTimers())
+        for i in timers:
+            print(i['remaining'])
 
 def setAlarm(msg, length):
     print("asd")
@@ -82,12 +84,6 @@ def getSeconds(timeAsString):
         return int(m.group(2)) * 60 + int(m.group(4).strip(string.punctuation))
     else:
         return int(m.group(2))
-
-def printMessage(msg):
-    if msg == None:
-        return
-    else:
-        print(msg)
 
 if __name__ == '__main__':
     main()
