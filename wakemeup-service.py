@@ -1,7 +1,5 @@
 import dbus, dbus.service, time, threading
 from concurrent.futures import ThreadPoolExecutor
-from random import choice
-from string import ascii_lowercase
 
 OPATH = "/com/esenliyim/WakeMeUp"
 IFACE = "com.esenliyim.WakeMeUp"
@@ -35,6 +33,7 @@ class WakerUpper(dbus.service.Object):
         for f in timers:
             t = timers[f]
             timer = dict()
+            timer['ID'] = str(t.name)
             timer['remaining'] = str(t.length)
             timer['when_finished'] = t.msg
             active.append(dbus.Dictionary(timer))
@@ -45,13 +44,32 @@ class WakerUpper(dbus.service.Object):
     def getAlarms(self):
         print("TODO")
 
+    @dbus.service.method(IFACE, in_signature='s', out_signature='b')
+    def deleteTimer(self, id):
+        for f in timers:
+            t = timers[f]
+            if t.name == id:
+                return clearTimer(f)
+        return False
+
     def clearTimer(f):
-        timers.pop(f)
+        if f in timers:
+            timers.pop(f)
+        else:
+            return False
+        if not timers:
+            Timer.names = 1
+        return True
 
 class Timer():
+
+    names = 1
+
     def __init__(self, length, msg=""):
         self.length = length
         self.msg = msg
+        self.name = "t" + str(Timer.names)
+        Timer.names += 1
     def setFuture(self, future):
         self.future = future
 
