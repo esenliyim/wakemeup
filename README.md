@@ -15,7 +15,7 @@ sets up an alarm for the specified time
 
 #### functional requirements
 
-* accept different formats for time input like `14:53` or `2:53 pm` or `1453`
+* accept different formats for time input like `13:14` or `1:14 pm` or `1314`
 
 * optional message to go along with the alarm
 
