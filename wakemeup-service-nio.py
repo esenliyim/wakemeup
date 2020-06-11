@@ -55,17 +55,24 @@ class TimerInterface(ServiceInterface):
         return str(len(TimerInterface._active_timers))
 
     #shows currently active timers
-    #returns an array of dictionaries
+    # returns an array of dictionaries
+    # one dict() contains: timer id, remaining time(s), status(b),
+    #   what happens when timer goes off
     @method()
     def showTimers(self) -> 'aa{ss}':
         active = []
         for f in TimerInterface._active_timers:
-            t = TimerInterface._active_timers[f]
+            t: Timer = TimerInterface._active_timers[f]
             timer = dict()
             timer['ID'] = t.id
-            remaining = t.end - datetime.now()
+            remaining: int
+            if t.isRunning:
+                remaining = int((t.end - datetime.now()).total_seconds())
+            else:
+                remaining = t.remaining
             timer['remaining'] = str(remaining)
             timer['when_finished'] = t.finalAction
+            timer['isRunning'] = str(t.isRunning)
             active.append(timer)
         print("Reporting active")
         return active
@@ -75,9 +82,42 @@ class TimerInterface(ServiceInterface):
     def removeTimer(self, id: 's') -> 'b':
         return TimerInterface.clearTimer(id)
 
+    #pauses the timer with the specified id
+    @method()
+    def pauseTimer(self, id: 's') -> 'bs':
+        if id not in TimerInterface._active_timers:
+            errorMsg = "timer %s not found." % id
+            return [False, errorMsg]
+        timer: Timer = TimerInterface._active_timers[id]
+        if timer.isRunning:
+            timer.task.cancel()
+            timer.isRunning = False
+            remaining = int((timer.end - datetime.now()).total_seconds())
+            timer.remaining = remaining
+            return [True, "timer %s paused." % id]
+        else:
+            errorMsg = "timer %s is already paused." % id
+            return [False, errorMsg]
+            
+    @method()
+    def resumeTimer(self, id: 's') -> 'bs':
+        if id not in TimerInterface._active_timers:
+            errorMsg = "timer %s not found." % id
+            return [False, errorMsg]
+        timer: Timer = TimerInterface._active_timers[id]
+        if timer.isRunning:
+            errorMsg = "timer %s already running." % id
+            return [False, errorMsg]
+        else:
+            remaining = timer.remaining
+            timer.end = datetime.now() + timedelta(seconds=remaining)
+            timer.setTask(loop.create_task(executeTimer(remaining)))
+            timer.isRunning = True
+            return [True, "timer %s is resuming." % id]
+
     #the method that cleans up the active timers list
     #called when a timer goes off and when a timer is to be manually removed
-    def clearTimer(id):
+    def clearTimer(self, id):
         if id in TimerInterface._active_timers:
             task = TimerInterface._active_timers[id].task
             task.cancel()
@@ -85,7 +125,7 @@ class TimerInterface(ServiceInterface):
             return True
         else:
             return False
-
+        
 #start counting down
 #TODO not happy with it, find a better way maybe?
 async def executeTimer(timer):
@@ -107,14 +147,16 @@ class Timer():
     def __init__(self, length: int, finalAction):
         self.id = "t" + str(Timer.ids)
         Timer.ids += 1
-        self.length = length
+        self.remaining = length
         self.finalAction = finalAction
         self.started = datetime.now()
         self.end = self.started + timedelta(seconds=length)
+        self.isRunning = True
+        # TODO leave adding to interface itself
         TimerInterface._active_timers[self.id] = self
     
     def setTask(self, task):
-        self.task = task
+        self.task: asyncio.Task = task
 
 #runs forever in an event loop
 async def main():

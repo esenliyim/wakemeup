@@ -47,8 +47,12 @@ def main():
     group2.add_argument('-c', '--create', help='The target for the timer or alarm. \
         Alarms can be input in 24h <hh:mm> format or in <hh:mm am|pm>.',
          type=str, metavar='TIME')
-    group2.add_argument('-r', '--remove', type=str, metavar='ID',
-     required=False, help='cancel the timer with ID')
+    group2.add_argument('-d', '--delete', type=str, metavar='ID',
+     required=False, help='cancel and delete the timer with ID')
+    group2.add_argument('-p', '--pause', type=str, metavar='ID',
+     help='pause the timer with ID')
+    group2.add_argument('-r', '--resume', type=str, metavar='ID', 
+     help='resume the timer with ID')
 
     #this is prettier than the default "no argument found" error
     if len(sys.argv) == 1:
@@ -76,13 +80,19 @@ def main():
             #tell the service to start the timer print the result
             setTimer(seconds, message)
         #if we're removing an existing timer
-        elif args.remove:
-            id = args.remove
+        elif args.delete:
+            id = args.delete
             result = clearTimer(id)
             if result:
                 print("Timer", id, "removed.")
             else:
                 print("Timer", id, "could not be removed.")
+        elif args.pause:
+            id = args.pause
+            print(getInterface().pauseTimer(id))
+        elif args.resume:
+            id = args.resume
+            print(getInterface().resumeTimer(id))
     
     #if we're working with alarms
     #COMING SOON
@@ -102,8 +112,9 @@ def main():
         if timers:
             for i in timers:
                 print("Timer ID:", i['ID'])
-                print("     Remaining:", i['remaining'])
+                print("     Remaining:", datetime.timedelta(seconds=int(i['remaining'])))
                 print("     When finished:", i['when_finished'])
+                print("     Status:", i['isRunning'])
         else:
             print("No active timers.")
             
