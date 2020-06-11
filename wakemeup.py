@@ -22,15 +22,18 @@
 # allows the timer to run in the background without being bound to a 
 # terminal window.
 
+from dbus import DBusException
+
 import getopt, sys, argparse, time, re, dbus, string, datetime
+
 
 #dbus constants
 OPATH = "/com/esenliyim/WakeMeUp"
 IFACE = "com.esenliyim.WakeMeUp.Timer"
 BUS_NAME = "com.esenliyim.WakeMeUp"
 
-#regex pattern to match time input against
-TIMER_PAT = re.compile('(^([1-9]\\d*)(:[0-5]\\d)?(.[0-5]\\d)?$)|(^[1-9]\\d*s$)')
+#regex patterns to match arguments against
+TIMER_LEN_PAT = re.compile('(^([1-9]\\d*)(:[0-5]\\d)?(.[0-5]\\d)?$)|(^[1-9]\\d*s$)')
 
 def main():
     parser = argparse.ArgumentParser()
@@ -71,7 +74,7 @@ def main():
             seconds = getSeconds(timer)
             if seconds == None:
                 print("Error: Invalid time input.\n")
-                print(parser.format_help())
+                parser.print_help()
                 return
             #get the message for the timer, default to nothing if nothing given
             message = args.message
@@ -82,16 +85,30 @@ def main():
         #if we're removing an existing timer
         elif args.delete:
             id = args.delete
-            result = clearTimer(id)
-            if result:
+            if id == None:
+                print("Error: A valid timer ID must be given.\n")
+                parser.print_help()
+                return
+            if clearTimer(id):
                 print("Timer", id, "removed.")
             else:
                 print("Timer", id, "could not be removed.")
         elif args.pause:
             id = args.pause
-            print(getInterface().pauseTimer(id))
+            if not id:
+                print("Error: A valid timer ID must be given.\n")
+                parser.print_help()
+                return
+            try:
+                print(getInterface().pauseTimer(id))
+            except DBusException as e:
+                print(e.args[0])
         elif args.resume:
             id = args.resume
+            if not id:
+                print("Error: A valid timer ID must be given.\n")
+                parser.print_help()
+                return
             print(getInterface().resumeTimer(id))
     
     #if we're working with alarms
@@ -129,7 +146,7 @@ def setTimer(timer, msg):
 
 #verify the time input and convert it to usable seconds
 def getSeconds(timeAsString):
-    m = TIMER_PAT.match(timeAsString)
+    m = TIMER_LEN_PAT.match(timeAsString)
     
     if not m:
         return None
