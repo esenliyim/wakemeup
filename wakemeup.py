@@ -23,6 +23,7 @@
 # terminal window.
 
 from dbus import DBusException
+from dbus_next import DBusError
 
 import getopt, sys, argparse, time, re, dbus, string, datetime
 
@@ -38,24 +39,28 @@ TIMER_LEN_PAT = re.compile('(^([1-9]\\d*)(:[0-5]\\d)?(.[0-5]\\d)?$)|(^[1-9]\\d*s
 def main():
     parser = argparse.ArgumentParser()
     #the main arg group to determine the 'mode of operation'
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-a', '--alarm', action='store_true', help='set alarm')
-    group.add_argument('-t', '--timer', action='store_true', help='set timer')
-    group.add_argument('-s', '--show', action='store_true', help='show active')
+    mainFlags = parser.add_mutually_exclusive_group(required=True)
+    mainFlags.add_argument('-a', '--alarm', action='store_true', help='set alarm')
+    mainFlags.add_argument('-t', '--timer', action='store_true', help='set timer')
+    mainFlags.add_argument('-s', '--show', action='store_true', help='show active')
     
     #second arg group to further specify what is to be done
-    group2 = parser.add_mutually_exclusive_group()
-    parser.add_argument('-m', '--message', type=str, metavar='MESSAGE',
-     required=False, help='message to display when the timer goes off')
-    group2.add_argument('-c', '--create', help='The target for the timer or alarm. \
+    operationalFlags = parser.add_mutually_exclusive_group()
+    operationalFlags.add_argument('-c', '--create', help='The target for the timer or alarm. \
         Alarms can be input in 24h <hh:mm> format or in <hh:mm am|pm>.',
          type=str, metavar='TIME')
-    group2.add_argument('-d', '--delete', type=str, metavar='ID',
+    operationalFlags.add_argument('-d', '--delete', type=str, metavar='ID',
      required=False, help='cancel and delete the timer with ID')
-    group2.add_argument('-p', '--pause', type=str, metavar='ID',
+    operationalFlags.add_argument('-p', '--pause', type=str, metavar='ID',
      help='pause the timer with ID')
-    group2.add_argument('-r', '--resume', type=str, metavar='ID', 
+    operationalFlags.add_argument('-r', '--resume', type=str, metavar='ID', 
      help='resume the timer with ID')
+
+    #optionalArgs = parser.add_mutually_exclusive_group()
+    parser.add_argument('-m', '--message', type=str, metavar='MESSAGE',
+     required=False, help='message to display when the timer goes off')
+    parser.add_argument('-x', '--execute', type=str, metavar='COMMAND',
+     required=False, help='command to be executed when the timer goes off')
 
     #this is prettier than the default "no argument found" error
     if len(sys.argv) == 1:
@@ -76,12 +81,19 @@ def main():
                 print("Error: Invalid time input.\n")
                 parser.print_help()
                 return
+
             #get the message for the timer, default to nothing if nothing given
             message = args.message
             if not message:
                 message = ""
+
+            #get the message for the timer, default to nothing if nothing given
+            command = args.execute
+            if not command:
+                command = ""
+            
             #tell the service to start the timer print the result
-            setTimer(seconds, message)
+            setTimer(seconds, message, command)
         #if we're removing an existing timer
         elif args.delete:
             id = args.delete
@@ -101,8 +113,8 @@ def main():
                 return
             try:
                 print(getInterface().pauseTimer(id))
-            except DBusException as e:
-                print(e.args[0])
+            except Exception as e:
+                print(str(e))
         elif args.resume:
             id = args.resume
             if not id:
@@ -122,16 +134,16 @@ def main():
     
     #if we're just seeing what timers are set
     elif args.show:
-        bus = dbus.SessionBus()
-        daemon = bus.get_object(BUS_NAME, OPATH)
-        interface = dbus.Interface(daemon, dbus_interface=IFACE)
-        timers = dbus.Array(interface.showTimers())
+        timers =  getInterface().showTimers()
         if timers:
             for i in timers:
                 print("Timer ID:", i['ID'])
                 print("     Remaining:", datetime.timedelta(seconds=int(i['remaining'])))
-                print("     When finished:", i['when_finished'])
                 print("     Status:", i['isRunning'])
+                if 'message' in i:
+                    print("     Message:", i['message'])
+                if 'command' in i:
+                    print("     Command:", i['command'])
         else:
             print("No active timers.")
             
@@ -140,8 +152,8 @@ def setAlarm(msg, length):
     print("TODO")
 
 #pass the parameters of the timer to the service, print the response
-def setTimer(timer, msg):
-    response = getInterface().setTimer(timer, msg)
+def setTimer(timer, msg, command):
+    response = getInterface().setTimer(timer, msg, command)
     print(response)
 
 #verify the time input and convert it to usable seconds
