@@ -4,6 +4,8 @@ server-side:
     - implement done calls
     - implement syntax checks
     - persistent notification with working buttons?
+    - dbus-next doesn't work with glib dbus mainloops, so gotta 
+        figure that out to get proper notifications
 
 client-side:
     

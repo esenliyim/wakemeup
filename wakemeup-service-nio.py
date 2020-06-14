@@ -21,8 +21,7 @@
 # set timers, and to cancel and remove them
 # TODO alarms soon
 
-import asyncio, re, notify2
-#gi.require_version('Notify', '0.7')
+import asyncio, re, notify2, asyncio_glib
 
 from dbus_next.aio import MessageBus
 from dbus_next.service import (ServiceInterface, method, dbus_property)
@@ -31,11 +30,7 @@ from dbus_next.constants import ErrorType
 from dbus import DBusException
 from contextlib import closing
 from datetime import datetime, timedelta
-#from gi.repository import Notify
 from Timer import Timer
-#from TimerService import TimerInterface
-
-
 
 #dbus constants
 OPATH = "/com/esenliyim/WakeMeUp"
@@ -144,20 +139,23 @@ class TimerInterface(ServiceInterface):
     
     async def setOffTimer(self, timer: Timer):
         if hasattr(timer, 'message'):
-            notify2.init("WakeMeUp")
-            notification = notify2.Notification(
-                "Time is up!",
-                timer.message,
-                "dialog-information",
-            )
-            notification.add_action(
-               "clicked",
-                "Dismiss",
-                self.bokebok,
-                None
-            )
-            notification.set_timeout(notify2.EXPIRES_NEVER)
-            notification.show()
+            try:
+                notify2.init("WakeMeUp", self._loop)
+                notification = notify2.Notification(
+                    "Time is up!",
+                    timer.message,
+                    "dialog-information",
+                )
+                notification.add_action(
+                    "clicked",
+                    "Dismiss",
+                    self.bokebok,
+                    None
+                )
+                notification.set_timeout(notify2.EXPIRES_NEVER)
+                notification.show()
+            except Exception as e:
+                print(e)
 
     # generates ID for a new timer
     def makeId(self) -> str:
@@ -176,9 +174,12 @@ class TimerInterface(ServiceInterface):
 
 #runs forever in an event loop
 async def main():
+
     #print(OPATH)
     #print(BUS_NAME)
     #print(IFACE)
+
+    #create and export the dbus service
     bus = await MessageBus().connect()
     interface = TimerInterface(IFACE, loop)
     bus.export(OPATH, interface)
@@ -186,5 +187,6 @@ async def main():
     await asyncio.get_event_loop().create_future()
     
 if __name__ == "__main__":
+    asyncio.set_event_loop_policy(asyncio_glib.GLibEventLoopPolicy())
     with closing(asyncio.get_event_loop()) as loop:
         loop.run_until_complete(main())
