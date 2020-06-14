@@ -52,7 +52,6 @@ class TimerInterface(ServiceInterface):
     @method()
     def setTimer(self, length: 'i', msg: 's', cmd: 's') -> 'bs':
         try:
-            # TODO kwargify self.task
             newId = self.makeId()
             timer = Timer(length, newId, _message=msg, _command=cmd)
             TimerInterface._active_timers[newId] = timer
