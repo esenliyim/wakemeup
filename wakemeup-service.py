@@ -21,7 +21,7 @@
 # set timers, and to cancel and remove them
 # TODO alarms soon
 
-import dbus, dbus.service, time, threading, notify2, logging
+import dbus, dbus.service, time, threading, notify2, logging, os
 import signal, sys
 from concurrent.futures import ThreadPoolExecutor
 from Timer import Timer
@@ -57,7 +57,7 @@ class TimerInterface(dbus.service.Object):
             timer = Timer(length, newId, _message=msg, _command=cmd)
             timer.task = executor.submit(self.startTimer, pill2kill, timer)
             self._active_timers[newId] = timer
-            logger.debug("Starting-> id:%s dur:%i msg:%s cmd:%s" % (newId, length, str(msg), str(cmd)))
+            logger.debug("Created timer id:%s dur:%i msg:%s cmd:%s" % (newId, length, str(msg), str(cmd)))
             return newId
         except Exception as e:
             raise DBusException(str(e))
@@ -163,6 +163,7 @@ class TimerInterface(dbus.service.Object):
         self._completed_timers.append(timer)
         #TODO server_capabilities ???
         if hasattr(timer, 'message'):
+            logger.debug("Creating notification for %s" % timer.id)
             n = notify2.Notification(
                 "Time is up!",
                 timer.message,
@@ -181,18 +182,31 @@ class TimerInterface(dbus.service.Object):
                    self.restartCallback,
                    timer
                 )
-            n.set_timeout(5)
+            # automatically close notification and remove timer after 10s
+            n.set_urgency(notify2.URGENCY_NORMAL)
+            n.set_timeout(2000)
             n.connect('closed', self.closedEvent)
             n.show()
+        if hasattr(timer, '_command'):
+            logger.debug("Executing command for %s" % timer.id)
+            # get default shell
+            s = os.environ['SHELL']
+            # throws a warning but what the warning tells me to do doesn't work
+            initialMsg = "Timer you set at {} has run out!".format(timer.started)
+            cmd = "gnome-terminal --working-directory=$HOME -e \
+                '{} -c \"echo {};{};{}\"'".format(s, initialMsg, timer._command, s)
+            #os.system("gnome-terminal --working-directory=$HOME -e '%s -c \"%s; %s\"'" % (s, timer._command, s))
+            os.system(cmd)
 
     # the main "body" of the Timer. 
     # Periodically checks for stop_event to enable graceful stopping
     # when necessary
     def startTimer(self, stop_event, timer: Timer):
-        while not stop_event.wait(0) and timer.remaining > 0:
+        logger.debug("Starting %s for %i" % (timer.id, timer.remaining))
+        while (not stop_event.wait(0)) and timer.remaining > 0:
             time.sleep(1)
-            timer.remaining -= 1  
-        if not stop_event.isSet:
+            timer.remaining -= 1 
+        if not stop_event.isSet():
             self.setOffTimer(timer)
 
     # The dismiss button on the notification. Deletes the timer.
@@ -214,12 +228,6 @@ class TimerInterface(dbus.service.Object):
             else: 
                 self.clearTimer(timer.id, True)
                 logger.debug("notification closing with %s terminating" % timer.id)
-
-    def nukeService(self):
-        if self._active_timers:
-            for id , timer in self._active_timers.items():
-                print(type(id), type(timer))
-                timer.task.cancel()
 
 # register a signal handler for graceful exit after sigint and sigterm
 # 1. shutdown the threadpoolexecutor, preventing the creation of new timers

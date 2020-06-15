@@ -36,14 +36,6 @@ class Timer():
     @message.setter
     def message(self, msg):
         self._message = msg
-    
-    @property
-    def command(self):
-        return self._command
-    
-    @command.setter
-    def command(self, cmd):
-        self._command = cmd
 
     @property
     def id(self):

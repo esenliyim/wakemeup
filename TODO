@@ -1,11 +1,10 @@
 server-side:
 
     - figure out how to alarm (cron?)
-    - implement done calls
     - implement syntax checks
-    - persistent notification with working buttons?
-    - dbus-next doesn't work with glib dbus mainloops, so gotta 
-        figure that out to get proper notifications
+    - cancel/add command to running timer
+    - flag to enable/disable notifications?
+    - default config
 
 client-side:
     
