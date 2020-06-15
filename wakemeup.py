@@ -173,7 +173,7 @@ def getSeconds(timeAsString):
     elif m.group(4):
         return int(m.group(2)) * 60 + int(m.group(4).strip(string.punctuation))
     else:
-        return int(m.group(2))
+        return int(m.group(2)) * 60
 
 #tell the service to cancel and remove the specified timer
 def clearTimer(id):

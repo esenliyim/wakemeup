@@ -55,8 +55,9 @@ class TimerInterface(dbus.service.Object):
         try:
             newId = self.makeTimerId()
             timer = Timer(length, newId, _message=msg, _command=cmd)
-            timer.task = executor.submit(self.startTimer, timer)
+            timer.task = executor.submit(self.startTimer, pill2kill, timer)
             self._active_timers[newId] = timer
+            logger.debug("Starting-> id:%s dur:%i msg:%s cmd:%s" % (newId, length, str(msg), str(cmd)))
             return newId
         except Exception as e:
             raise DBusException(str(e))
@@ -125,7 +126,7 @@ class TimerInterface(dbus.service.Object):
         else:
             remaining = timer.remaining
             timer.end = datetime.now() + timedelta(seconds=remaining)
-            timer.task = executor.submit(self.startTimer, timer)
+            timer.task = executor.submit(self.startTimer, pill2kill, timer)
             timer.isRunning = True
             return True
 
@@ -184,18 +185,21 @@ class TimerInterface(dbus.service.Object):
             n.connect('closed', self.closedEvent)
             n.show()
 
-    # the main "body" of the Timer, which is simply waiting until it is time
-    # to do something interesting
-    def startTimer(self, timer: Timer):
-        time.sleep(timer.remaining)
-        self.setOffTimer(timer)
+    # the main "body" of the Timer. 
+    # Periodically checks for stop_event to enable graceful stopping
+    # when necessary
+    def startTimer(self, stop_event, timer: Timer):
+        while not stop_event.wait(0) and timer.remaining > 0:
+            time.sleep(1)
+            timer.remaining -= 1  
+        if not stop_event.isSet:
+            self.setOffTimer(timer)
 
     # The dismiss button on the notification. Deletes the timer.
     def dismissCallback(self, n, a, timer=None):
         logger.debug("Dismiss clicked for %s" % timer.id)
         timer.restarting = False
 
-    # TODO implement actual restarting
     def restartCallback(self, n, a, timer=None):
         logger.debug("Restart clicked for %s" % timer.id)
         timer.restarting = True
@@ -205,20 +209,36 @@ class TimerInterface(dbus.service.Object):
             timer: Timer = self._completed_timers.pop()
             if timer.restarting:
                 timer.initialize()
-                timer.task = executor.submit(self.startTimer, timer)
+                timer.task = executor.submit(self.startTimer, pill2kill, timer)
                 logger.debug("notification closing with %s restarting" % timer.id)
             else: 
                 self.clearTimer(timer.id, True)
                 logger.debug("notification closing with %s terminating" % timer.id)
 
+    def nukeService(self):
+        if self._active_timers:
+            for id , timer in self._active_timers.items():
+                print(type(id), type(timer))
+                timer.task.cancel()
 
-# register SIGINT with sigHandler for graceful ctrl+c and KILL
+# register a signal handler for graceful exit after sigint and sigterm
+# 1. shutdown the threadpoolexecutor, preventing the creation of new timers
+# 2. set the kill pill so that timers stop
+# 3. sys.exit(0) to terminate mainloop 
 def sigHandler(sig, frame):
-    signal.signal(sig, signal.SIG_IGN)
+    if sig == signal.SIGINT:
+        logger.debug('Keyboard interrupt received.')
+    else:
+        logger.debug('Kill signal received')
     print() # only to get rid of the annoying '%' in the terminal
-    logger.debug('Killing process.')
-    sys.exit(0)
+    logger.debug('Shutting down executor')
+    executor.shutdown(wait=False)
+    logger.debug('Setting kill pill')
+    pill2kill.set()
+    logger.debug('Quitting mainloop')
+    loop.quit()
 signal.signal(signal.SIGINT, sigHandler)
+signal.signal(signal.SIGTERM, sigHandler)
 
 if __name__ == "__main__":
     import dbus.mainloop.glib
@@ -231,6 +251,7 @@ if __name__ == "__main__":
     logger.addHandler(fh)
     #TODO pool size??? by default no. of CPU cores * 5
     with ThreadPoolExecutor() as executor:
+        pill2kill = threading.Event()
         notify2.init("wakemeup")
         loop = GLib.MainLoop()
         object = TimerInterface(loop)

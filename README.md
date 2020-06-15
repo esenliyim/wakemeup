@@ -1,11 +1,13 @@
 # wakemeup
 
-A command line utility for setting up timers and alarms. Right now the script "wakemeup" works as a client for "wakemeup-service-nio", communicating over dbus.
+A command line utility for setting up timers and alarms. Right now the script "wakemeup" works as a client for "wakemeup-service", communicating over dbus.
 
 
 ## Feature goals
 
-`wakemeup [-h] (-a | -t | -s) [-m MESSAGE] [-c TIME | -r ID]`
+`wmu [-h] (-a | -t | -s) [-c TIME | -d ID | -p ID | -r ID] [-m MESSAGE] [-x COMMAND]`
+
+TODO simplify that mess ^^^
 
 ### alarms:
 
@@ -31,10 +33,6 @@ sets up an alarm for the specified time
 
 #### functional requirements:
 
-* remove timer specified with ID
-
 * default to minutes unless time unit is specified
-
-* optional message to go along with the timer
 
 * do something when timer goes off of course
