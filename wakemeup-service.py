@@ -39,7 +39,8 @@ class TimerInterface(dbus.service.Object):
 
     # Basic definition of the service. Exported to the session bus.
     # TODO look into systembus
-    def __init__(self):
+    def __init__(self, loop):
+        self.loop = loop
         bus = dbus.SessionBus()
         bus.request_name(BUS_NAME)
         name = dbus.service.BusName(BUS_NAME, bus=bus)
@@ -61,14 +62,15 @@ class TimerInterface(dbus.service.Object):
     @dbus.service.method(TIMER_IFACE, in_signature='', out_signature='aa{ss}')
     def showTimers(self):
         active = dbus.Array()
-        for f in timers:
-            t = timers[f]
+        for f in self._active_timers:
+            t = self._active_timers[f]
             timer = dict()
-            timer['ID'] = str(t.name)
+            timer['ID'] = t.id
             if t.isRunning:
-                timer['remaining'] = int((t.end - datetime.now()).total_seconds())
+                remaining = int((t.end - datetime.now()).total_seconds())
+                timer['remaining'] = str(remaining)
             else:
-                timer['remaining'] = t.remaining
+                timer['remaining'] = str(t.remaining)
             timer['isRunning'] = str(t.isRunning)
             if hasattr(t, 'message'):
                 timer['message'] = t.message
@@ -146,27 +148,34 @@ class TimerInterface(dbus.service.Object):
         if not self._active_timers:
             self._ids = 1
             return "t1"
-        self._active_timers += 1
+        self._ids += 1
         return "t%i" % self._ids
 
     # The final destination of the timer.
-    # TODO implement notification with dismiss/restart option, 
     # and custom command/script execution 
     def setOffTimer(self, timer: Timer):
+        #TODO server_capabilities
         if hasattr(timer, 'message'):
-            notify2.init("wakemeup", loop)
             n = notify2.Notification(
                 "Time is up!",
                 timer.message,
                 "dialog-information"
             )
-            n.add_action(
-                "clicked",
-                "Dismiss",
-                self.testCallback,
-                None
-            )
-            n.set_timeout(notify2.EXPIRES_NEVER)
+            if not n.actions:
+                n.add_action(
+                    "dismissed",
+                    "Dismiss",
+                    self.buttonCallback,
+                    timer
+                )
+                n.add_action(
+                   "restarted",
+                   "Restart",
+                  self.restartCallback,
+                   timer
+                )
+            n.set_timeout(5)
+            #n.connect('closed', self.closedEvent)
             n.show()
 
     # the main "body" of the Timer, which is simply waiting until it is time
@@ -177,8 +186,18 @@ class TimerInterface(dbus.service.Object):
         self.setOffTimer(timer)
 
     # The dismiss button on the notification. Deletes the timer.
-    def dismissCallback(self):
-        print("ye")
+    def buttonCallback(self, n: notify2.Notification, action, timer=None):
+        print("bok", len(n.actions))
+        #print(timer.id, timer.task.running(), timer.task.result())
+        #notify2.uninit()
+        self.clearTimer(timer.id, True)
+
+    def restartCallback(self, n, action, timer=None):
+        print(timer.id)
+        self.clearTimer(timer.id, True)
+
+    def closedEvent(self):
+        print("closed")
 
 if __name__ == "__main__":
     import dbus.mainloop.glib
@@ -186,7 +205,8 @@ if __name__ == "__main__":
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     #TODO pool size??? by default no. of CPU cores * 5
     with ThreadPoolExecutor() as executor:
+        notify2.init("wakemeup")
         loop = GLib.MainLoop()
-        object = TimerInterface()
+        object = TimerInterface(loop)
         timers = dict()
         loop.run()

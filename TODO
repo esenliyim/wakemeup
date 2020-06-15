@@ -13,6 +13,7 @@ client-side:
     - foreground option?
     - local option without involving the server
     - bit of code cleanup
+    - simplify usage
 
 general:
 
