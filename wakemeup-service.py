@@ -21,7 +21,8 @@
 # set timers, and to cancel and remove them
 # TODO alarms soon
 
-import dbus, dbus.service, time, threading, notify2
+import dbus, dbus.service, time, threading, notify2, logging
+import signal, sys
 from concurrent.futures import ThreadPoolExecutor
 from Timer import Timer
 from dbus import DBusException
@@ -36,6 +37,7 @@ TIMER_IFACE = BUS_NAME + ".Timer"
 class TimerInterface(dbus.service.Object):
 
     _active_timers = dict()
+    _completed_timers = []
 
     # Basic definition of the service. Exported to the session bus.
     # TODO look into systembus
@@ -45,6 +47,7 @@ class TimerInterface(dbus.service.Object):
         bus.request_name(BUS_NAME)
         name = dbus.service.BusName(BUS_NAME, bus=bus)
         super().__init__(name, OPATH)
+        logger.debug("Starting service: %s" % name.get_name())
     
     # Creates a new Timer object and sends it on its way
     @dbus.service.method(TIMER_IFACE, in_signature='iss', out_signature='s')
@@ -77,7 +80,7 @@ class TimerInterface(dbus.service.Object):
             if hasattr(t, 'command'):
                 timer['command'] = t.command
             active.append(dbus.Dictionary(timer))
-        print("Reporting active")
+        logger.info("Reporting %i active" % len(self._active_timers))
         return active
 
     # Handles the removal of active timers
@@ -154,7 +157,10 @@ class TimerInterface(dbus.service.Object):
     # The final destination of the timer.
     # and custom command/script execution 
     def setOffTimer(self, timer: Timer):
-        #TODO server_capabilities
+        timer.isRunning = False
+        timer.restarting = False
+        self._completed_timers.append(timer)
+        #TODO server_capabilities ???
         if hasattr(timer, 'message'):
             n = notify2.Notification(
                 "Time is up!",
@@ -165,48 +171,69 @@ class TimerInterface(dbus.service.Object):
                 n.add_action(
                     "dismissed",
                     "Dismiss",
-                    self.buttonCallback,
+                    self.dismissCallback,
                     timer
                 )
                 n.add_action(
                    "restarted",
                    "Restart",
-                  self.restartCallback,
+                   self.restartCallback,
                    timer
                 )
             n.set_timeout(5)
-            #n.connect('closed', self.closedEvent)
+            n.connect('closed', self.closedEvent)
             n.show()
 
     # the main "body" of the Timer, which is simply waiting until it is time
-    # to do something interesting 
-    # TODO test if it waits for button clicks or 'closed' event
+    # to do something interesting
     def startTimer(self, timer: Timer):
         time.sleep(timer.remaining)
         self.setOffTimer(timer)
 
     # The dismiss button on the notification. Deletes the timer.
-    def buttonCallback(self, n: notify2.Notification, action, timer=None):
-        print("bok", len(n.actions))
-        #print(timer.id, timer.task.running(), timer.task.result())
-        #notify2.uninit()
-        self.clearTimer(timer.id, True)
+    def dismissCallback(self, n, a, timer=None):
+        logger.debug("Dismiss clicked for %s" % timer.id)
+        timer.restarting = False
 
-    def restartCallback(self, n, action, timer=None):
-        print(timer.id)
-        self.clearTimer(timer.id, True)
+    # TODO implement actual restarting
+    def restartCallback(self, n, a, timer=None):
+        logger.debug("Restart clicked for %s" % timer.id)
+        timer.restarting = True
 
-    def closedEvent(self):
-        print("closed")
+    def closedEvent(self, n):
+        while self._completed_timers:
+            timer: Timer = self._completed_timers.pop()
+            if timer.restarting:
+                timer.initialize()
+                timer.task = executor.submit(self.startTimer, timer)
+                logger.debug("notification closing with %s restarting" % timer.id)
+            else: 
+                self.clearTimer(timer.id, True)
+                logger.debug("notification closing with %s terminating" % timer.id)
+
+
+# register SIGINT with sigHandler for graceful ctrl+c and KILL
+def sigHandler(sig, frame):
+    signal.signal(sig, signal.SIG_IGN)
+    print() # only to get rid of the annoying '%' in the terminal
+    logger.debug('Killing process.')
+    sys.exit(0)
+signal.signal(signal.SIGINT, sigHandler)
 
 if __name__ == "__main__":
     import dbus.mainloop.glib
     from gi.repository import GLib
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    fh = logging.FileHandler('wmu-service.log')
+    fh.setFormatter(logging.Formatter('%(asctime)s:%(module)s:%(message)s'))
+    logger.addHandler(fh)
     #TODO pool size??? by default no. of CPU cores * 5
     with ThreadPoolExecutor() as executor:
         notify2.init("wakemeup")
         loop = GLib.MainLoop()
         object = TimerInterface(loop)
         timers = dict()
+        logger.info("Starting loop.")
         loop.run()

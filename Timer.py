@@ -11,12 +11,15 @@ class Timer():
     def __init__(self, length: int, id:str, *args, **kwargs):
         self._id = id
         self._initialDuration = length
-        self._remaining = length
-        self._started = datetime.now()
-        self._end = self._started + timedelta(seconds=length)
-        self._isRunning = True
+        self.initialize()
         for key, value in kwargs.items():
             self.__setattr__(key, value)
+
+    def initialize(self):
+        self._remaining = self._initialDuration
+        self._started = datetime.now()
+        self._end = self._started + timedelta(seconds=self._remaining)
+        self._isRunning = True
 
     @property
     def task(self):
@@ -89,3 +92,11 @@ class Timer():
     @initialDuration.setter
     def initialDuration(self, d):
         self._initialDuration = d
+
+    @property
+    def restarting(self):
+        return self._restarting
+
+    @restarting.setter
+    def restarting(self, s):
+        self._restarting = s

@@ -25,7 +25,7 @@
 from dbus import DBusException
 from dbus_next import DBusError
 
-import getopt, sys, argparse, time, re, dbus, string, datetime
+import getopt, sys, argparse, time, re, dbus, string, datetime, logging
 
 
 #dbus constants
@@ -68,7 +68,7 @@ def main():
         return
 
     args = parser.parse_args()
-
+    logger.debug("Parsed: " + str(args))
     #if we're working with timers
     if args.timer:
         
@@ -186,4 +186,9 @@ def getInterface():
     return dbus.Interface(daemon, dbus_interface=IFACE)
 
 if __name__ == '__main__':
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    fh = logging.FileHandler('wmu-client.log')
+    fh.setFormatter(logging.Formatter('%(asctime)s:%(module)s:%(message)s'))
+    logger.addHandler(fh)    
     main()
