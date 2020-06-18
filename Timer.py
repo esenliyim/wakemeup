@@ -79,7 +79,7 @@ class Timer():
 
     @property
     def initialDuration(self):
-        return self._initalDuration
+        return self._initialDuration
 
     @initialDuration.setter
     def initialDuration(self, d):

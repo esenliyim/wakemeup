@@ -46,9 +46,9 @@ def main():
     
     #second arg group to further specify what is to be done
     operationalFlags = parser.add_mutually_exclusive_group()
-    operationalFlags.add_argument('-c', '--create', help='The target for the timer or alarm. \
+    parser.add_argument('length', help='The target for the timer or alarm. \
         Alarms can be input in 24h <hh:mm> format or in <hh:mm am|pm>.',
-         type=str, metavar='TIME')
+         type=str, metavar='TIME', nargs='?')
     operationalFlags.add_argument('-d', '--delete', type=str, metavar='ID',
      required=False, help='cancel and delete the timer with ID')
     operationalFlags.add_argument('-p', '--pause', type=str, metavar='ID',
@@ -71,7 +71,7 @@ def main():
     logger.debug("Parsed: " + str(args))
     #if we're working with timers
     if args.timer:
-        
+        """
         #if we're creating one
         if args.create:
             #get the specified duration of the timer and convert into seconds
@@ -95,7 +95,8 @@ def main():
             #tell the service to start the timer print the result
             setTimer(seconds, message, command)
         #if we're removing an existing timer
-        elif args.delete:
+        """
+        if args.delete:
             id = args.delete
             if id == None:
                 print("Error: A valid timer ID must be given.\n")
@@ -122,15 +123,24 @@ def main():
                 parser.print_help()
                 return
             print(getInterface().resumeTimer(id))
+        else:
+            if not args.timer:
+                print("HAHA\n")
+                parser.print_help()
+                return
+            seconds = getSeconds(args.length)
+            if not seconds:
+                print("Error: Invalid time input.\n")
+                parser.print_help()
+                return
+            message = args.message if args.message else ""
+            command = args.execute if args.execute else ""
+            setTimer(seconds, message, command)
     
     #if we're working with alarms
     #COMING SOON
     elif args.alarm:
-        if timer == None:
-            parser.print_help()
-            return
-
-        setAlarm(args.message, args.time)
+        pass
     
     #if we're just seeing what timers are set
     elif args.show:
@@ -138,8 +148,11 @@ def main():
         if timers:
             for i in timers:
                 print("Timer ID:", i['ID'])
-                print("     Remaining:", datetime.timedelta(seconds=int(i['remaining'])))
-                print("     Status:", i['isRunning'])
+                print("     Initial duration:",
+                 datetime.timedelta(seconds=int(i['duration'])))
+                print("     Remaining:",
+                 datetime.timedelta(seconds=int(i['remaining'])))
+                print("     Status: %s" % "Running" if i['isRunning'] else "Stopped")
                 if 'message' in i:
                     print("     Message:", i['message'])
                 if 'command' in i:
@@ -152,9 +165,10 @@ def setAlarm(msg, length):
     print("TODO")
 
 #pass the parameters of the timer to the service, print the response
-def setTimer(timer, msg, command):
-    response = getInterface().setTimer(timer, msg, command)
-    print(response)
+def setTimer(duration, msg, command):
+    logger.debug("Requesting new timer with dur:{}s msg:{} cmd:{}".format(duration, msg, command))
+    response = getInterface().setTimer(duration, msg, command)
+    print("Successfully tarted new timer: %s" % response)
 
 #verify the time input and convert it to usable seconds
 def getSeconds(timeAsString):

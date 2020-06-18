@@ -70,16 +70,15 @@ class TimerInterface(dbus.service.Object):
             t = self._active_timers[f]
             timer = dict()
             timer['ID'] = t.id
+            timer['duration'] = str(t.initialDuration)
             if t.isRunning:
                 remaining = int((t.end - datetime.now()).total_seconds())
                 timer['remaining'] = str(remaining)
             else:
                 timer['remaining'] = str(t.remaining)
             timer['isRunning'] = str(t.isRunning)
-            if hasattr(t, 'message'):
-                timer['message'] = t.message
-            if hasattr(t, 'command'):
-                timer['command'] = t.command
+            timer['message'] = t.message if t.message else ""
+            timer['command'] = t.command if hasattr(t, 'command') else ""
             active.append(dbus.Dictionary(timer))
         logger.info("Reporting %i active" % len(self._active_timers))
         return active
@@ -103,11 +102,7 @@ class TimerInterface(dbus.service.Object):
             raise DBusException("no such timer")
         timer: Timer = self._active_timers[id]
         if timer.isRunning:
-            if not timer.task.cancel():
-                raise DBusException("cannot pause timer?")
             timer.isRunning = False
-            remaining = int((timer.end - datetime.now()).total_seconds())
-            timer.remaining = remaining
             return True
         else:
             raise DBusException("timer %s is already paused" % id)
@@ -158,11 +153,12 @@ class TimerInterface(dbus.service.Object):
     # The final destination of the timer.
     # and custom command/script execution 
     def setOffTimer(self, timer: Timer):
+        logger.debug("Time %s going off" % timer.id)
         timer.isRunning = False
         timer.restarting = False
         self._completed_timers.append(timer)
         #TODO server_capabilities ???
-        if hasattr(timer, 'message'):
+        if timer.message != "":
             logger.debug("Creating notification for %s" % timer.id)
             n = notify2.Notification(
                 "Time is up!",
@@ -187,7 +183,8 @@ class TimerInterface(dbus.service.Object):
             n.set_timeout(2000)
             n.connect('closed', self.closedEvent)
             n.show()
-        if hasattr(timer, '_command'):
+            return
+        if timer._command != "":
             logger.debug("Executing command for %s" % timer.id)
             # get default shell
             s = os.environ['SHELL']
@@ -197,17 +194,24 @@ class TimerInterface(dbus.service.Object):
                 '{} -c \"echo {};{};{}\"'".format(s, initialMsg, timer._command, s)
             #os.system("gnome-terminal --working-directory=$HOME -e '%s -c \"%s; %s\"'" % (s, timer._command, s))
             os.system(cmd)
+            return
+        logger.debug("Clearing timer %s" % timer.id)
+        self.clearTimer(timer.id, True)
 
     # the main "body" of the Timer. 
-    # Periodically checks for stop_event to enable graceful stopping
-    # when necessary
+    # Periodical checks for kill pill necessary for graceful shutdown
+    # While we're forced to check for pill periodically, might as well
+    # tie pause/resume to that check loop
+    # TODO maybe a better way? 
     def startTimer(self, stop_event, timer: Timer):
-        logger.debug("Starting %s for %i" % (timer.id, timer.remaining))
+        logger.debug("Starting %s for %is" % (timer.id, timer.remaining))
         while (not stop_event.wait(0)) and timer.remaining > 0:
             time.sleep(1)
-            timer.remaining -= 1 
-        if not stop_event.isSet():
-            self.setOffTimer(timer)
+            if timer.isRunning:
+                timer.remaining -= 1 
+        if stop_event.isSet():
+            return
+        self.setOffTimer(timer)
 
     # The dismiss button on the notification. Deletes the timer.
     def dismissCallback(self, n, a, timer=None):
